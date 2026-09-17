@@ -8,6 +8,13 @@ __pycache__/
 data/raw/
 data/interim/
 data/processed/
+data/model.joblib
 
 *.pyc
+*.$py.class
 .env
+.coverage
+.coverage.*
+htmlcov/
+desktop.ini
+.DS_Store

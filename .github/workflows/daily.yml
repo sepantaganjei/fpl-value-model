@@ -1,0 +1,39 @@
+name: Daily retrain
+
+on:
+  schedule:
+    - cron: "30 6 * * *"  # 06:30 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --only main
+
+      - name: Refresh data and retrain
+        run: |
+          poetry run python -m fpl_value_model.data --refresh
+          poetry run python -m fpl_value_model.pipeline
+
+      - name: Commit refreshed predictions
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/predictions.parquet
+          git diff --quiet --staged || git commit -m "chore: daily prediction refresh"
+          git push
