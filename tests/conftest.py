@@ -11,6 +11,7 @@ _COLUMNS = [
     "name",
     "position",
     "team_id",
+    "team_name",
     "team_strength",
     "now_cost",
     "total_points",
@@ -41,6 +42,7 @@ def _player_season(
     now_cost: int = 70,
     points: int = 150,
     team_id: int = 1,
+    team_name: str = "Test Town",
     team_strength: float = 0.0,
 ) -> dict[str, object]:
     xg = goals * 0.9
@@ -50,6 +52,7 @@ def _player_season(
         "name": name,
         "position": position,
         "team_id": team_id,
+        "team_name": team_name,
         "team_strength": team_strength,
         "now_cost": now_cost,
         "total_points": points,

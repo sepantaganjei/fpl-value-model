@@ -167,6 +167,16 @@ def _team_strength_table(teams: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def _team_names_table(teams: pd.DataFrame) -> pd.DataFrame:
+    """Reduce a raw FPL teams table to an id -> display-name lookup."""
+    return pd.DataFrame(
+        {
+            "team_id": pd.to_numeric(teams["id"], errors="coerce"),
+            "team_name": teams["name"],
+        }
+    )
+
+
 def _fetch_teams_csv(season: str) -> pd.DataFrame:
     """Download and parse a season's ``teams.csv`` from the vaastav mirror."""
     response = _get(VAASTAV_TEAMS_RAW_URL.format(season=season))
@@ -196,8 +206,9 @@ def load_live_players(*, refresh: bool = False) -> pd.DataFrame:
     elements = pd.DataFrame(payload["elements"])
     frame = _normalise(elements, season="live")
 
-    team_strength = _team_strength_table(pd.DataFrame(payload["teams"]))
-    frame = frame.merge(team_strength, on="team_id", how="left")
+    teams = pd.DataFrame(payload["teams"])
+    frame = frame.merge(_team_strength_table(teams), on="team_id", how="left")
+    frame = frame.merge(_team_names_table(teams), on="team_id", how="left")
 
     frame.to_parquet(cache, index=False)
     return frame
@@ -237,8 +248,9 @@ def load_historical_players(
         raw = pd.read_csv(io.StringIO(response.text))
         frame = _normalise(raw, season=season)
 
-        team_strength = _team_strength_table(_fetch_teams_csv(season))
-        frame = frame.merge(team_strength, on="team_id", how="left")
+        teams = _fetch_teams_csv(season)
+        frame = frame.merge(_team_strength_table(teams), on="team_id", how="left")
+        frame = frame.merge(_team_names_table(teams), on="team_id", how="left")
 
         frames.append(frame)
 

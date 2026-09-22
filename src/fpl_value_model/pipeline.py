@@ -27,6 +27,7 @@ _OUTPUT_COLUMNS: tuple[str, ...] = (
     "name",
     "position",
     "team_id",
+    "team_name",
     "price_m",
     "pred_m",
     "value_m",

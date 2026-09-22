@@ -187,6 +187,7 @@ def attach_history_features(
             "name",
             "position",
             "team_id",
+            "team_name",
             "total_points",
             "status",
             "chance_of_playing_next_round",

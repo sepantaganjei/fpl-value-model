@@ -49,16 +49,25 @@ with pytest.
 1. **Features** — counting stats (goals, assists, xG, xA, xGI, ICT,
    bonus, clean sheets, saves) are converted to per-90 rates so a
    part-season and a full season compare fairly. Player-seasons under
-   450 minutes are dropped.
+   450 minutes are dropped. Team strength (z-scored within each
+   season/source) and ownership (`selected_by_percent`) are added as
+   current-state features, never blended across a transfer or the
+   off-season.
 2. **Model** — a scikit-learn pipeline (standardise + one-hot position +
    regression). Linear regression is the default; Ridge and a
    gradient-boosted tree are compared in `cross_validate_by_season`.
 3. **Scoring** — the fitted model predicts a *fair price* for every
-   current player from their most recent season's per-90 form. Live
-   players with no history are skipped. `value_m = pred_m - price_m`.
+   current player, blending this season's form with their most recent
+   completed season's (weighted by minutes played so far). Live players
+   with no personal history fall back to a position average, flagged
+   `has_history = False`. `value_m = pred_m - price_m`.
 4. **Backtest** — `walk_forward_backtest` fits on earlier seasons,
    drafts the top 20 by each strategy from the prior season, and scores
    them on the next season's points per million.
+5. **Dashboard** — `app/streamlit_app.py` reads only
+   `data/predictions.parquet` (no live model or network calls), with
+   filters for position, price, availability, and personal-history
+   status.
 
 ## Getting started
 
@@ -66,6 +75,7 @@ with pytest.
 poetry install
 make data      # fetch and cache FPL data
 make train     # fit the model, write data/predictions.parquet
+make app       # launch the Streamlit dashboard
 make check     # lint, type-check, test
 ```
 
@@ -81,7 +91,7 @@ src/fpl_value_model/
   pipeline.py    end-to-end run -> data/predictions.parquet
 notebooks/       exploratory companion to the package
 tests/           unit tests (pytest)
-app/             Streamlit dashboard (Milestone 3)
+app/             Streamlit dashboard -- reads data/predictions.parquet only
 .github/workflows/  CI and the daily retrain job
 ```
 
@@ -91,8 +101,9 @@ Season-held-out CV on 1,608 player-seasons (2022-23 to 2025-26):
 
 | model | MAE (GBP m) | R2 |
 | --- | --- | --- |
-| gradient boosting | 0.54 | 0.55 |
-| ridge / linear | 0.56 | 0.53 |
+| gradient boosting | 0.48 | 0.63 |
+| ridge | 0.49 | 0.64 |
+| linear | 0.50 | 0.64 |
 | predict-the-mean | 0.83 | 0.00 |
 
 Backtest, mean forward points per million of the top-20 picks:
@@ -105,14 +116,17 @@ Backtest, mean forward points per million of the top-20 picks:
 | cheapest | 13.2 |
 
 The value signal edges out raw FPL form and clearly beats the naive
-baselines. Premium players (Haaland, Bruno, Salah) always read as
-"overpriced" — a linear model on per-90 counting stats can't price the
-captaincy/ownership premium.
+baselines. Premium players (Haaland, Bruno, Salah) still read as
+"overpriced" even after adding ownership as a feature, though the gap
+shrank meaningfully (Haaland's residual: -6.85 -> -3.85) -- the model
+recovers some, not all, of the captaincy/ownership premium.
 
 ## Status
 
 - **Milestone 1** — data layer + prototype notebook: done.
 - **Milestone 2** — package refactor (`features` / `model` / `backtest`
   / `pipeline`), pytest suite, backtest: done.
-- **Milestone 3** — Streamlit dashboard + deploy + daily GitHub Actions
-  retrain: next.
+- **Milestone 3** — Streamlit dashboard, daily GitHub Actions retrain
+  (`.github/workflows/daily.yml`, running since 2026-09-18): done.
+  Deploying the dashboard somewhere reachable outside your machine is
+  still open.
