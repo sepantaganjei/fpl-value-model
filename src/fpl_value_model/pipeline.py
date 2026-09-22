@@ -35,6 +35,7 @@ _OUTPUT_COLUMNS: tuple[str, ...] = (
     "available",
     "status",
     "chance_of_playing_next_round",
+    "has_history",
 )
 
 

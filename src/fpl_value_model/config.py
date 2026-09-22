@@ -22,6 +22,11 @@ VAASTAV_PLAYERS_RAW_URL: str = (
     "master/data/{season}/players_raw.csv"
 )
 
+VAASTAV_TEAMS_RAW_URL: str = (
+    "https://raw.githubusercontent.com/vaastav/Fantasy-Premier-League/"
+    "master/data/{season}/teams.csv"
+)
+
 #: Historical seasons that expose the ``expected_*`` columns.
 HISTORICAL_SEASONS: tuple[str, ...] = ("2022-23", "2023-24", "2024-25", "2025-26")
 
@@ -44,8 +49,17 @@ COUNTING_STATS: tuple[str, ...] = (
 #: Per-90 feature columns produced by :func:`fpl_value_model.features.to_per90`.
 PER90_FEATURES: tuple[str, ...] = tuple(f"{stat}_per90" for stat in COUNTING_STATS)
 
-#: Numeric model features: per-90 rates plus season minutes as a role proxy.
-NUMERIC_FEATURES: tuple[str, ...] = (*PER90_FEATURES, "minutes")
+#: Per-90 rates plus season minutes: shrunk toward last season when scoring
+#: a live player, weighted by minutes played so far this season.
+BLEND_FEATURES: tuple[str, ...] = (*PER90_FEATURES, "minutes")
+
+#: Team-level context, taken as-is from the player's *current* club. Never
+#: blended across seasons: a summer transfer should see their new club's
+#: strength immediately, not a mix with their old one's.
+TEAM_FEATURES: tuple[str, ...] = ("team_strength",)
+
+#: All numeric model features.
+NUMERIC_FEATURES: tuple[str, ...] = (*BLEND_FEATURES, *TEAM_FEATURES)
 
 #: Categorical model features, one-hot encoded before fitting.
 CATEGORICAL_FEATURES: tuple[str, ...] = ("position",)

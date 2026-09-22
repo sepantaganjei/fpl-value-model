@@ -13,12 +13,13 @@ import pandas as pd
 
 from fpl_value_model.config import (
     AVAILABLE_STATUSES,
+    BLEND_FEATURES,
     COUNTING_STATS,
     FEATURE_COLUMNS,
     MIN_MINUTES,
-    NUMERIC_FEATURES,
     TARGET_COLUMN,
     TARGET_M,
+    TEAM_FEATURES,
 )
 
 
@@ -136,14 +137,20 @@ def attach_history_features(
 ) -> pd.DataFrame:
     """Blend each live player's in-progress season with their latest one.
 
-    This season's per-90 rates and minutes are shrunk toward the player's
-    most recent completed season, weighted by how many minutes they've
-    played so far this season: early on, with only a handful of minutes,
-    the blend leans on last season's rates since a tiny in-season sample
-    is too noisy to trust; as minutes accumulate this season it shifts
-    toward the player's current form. Live players with no historical
-    match (new signings, academy players) are dropped: there is nothing
-    to blend with.
+    This season's per-90 rates and minutes are shrunk toward a prior,
+    weighted by how many minutes they've played so far this season: early
+    on, with only a handful of minutes, the blend leans on the prior since
+    a tiny in-season sample is too noisy to trust; as minutes accumulate
+    this season it shifts toward the player's current form. The prior is
+    the player's own most recent completed season where there is one; for
+    a live player with no historical match (new signings, promoted-team
+    players, academy graduates) it falls back to the average of their
+    position instead of being dropped, since even a rough position-shaped
+    prior beats no prediction at all. Team-level features (see
+    :data:`~fpl_value_model.config.TEAM_FEATURES`) are the exception: they
+    come straight from the player's current club, unblended, since a
+    summer transfer should see their new team's strength immediately
+    rather than a mix with their old one's.
 
     Parameters
     ----------
@@ -159,13 +166,17 @@ def attach_history_features(
     Returns
     -------
     pandas.DataFrame
-        Live players with current ``price_m`` and blended features, ready
-        for :meth:`fpl_value_model.model.ValueModel.predict`.
+        Every live player with current ``price_m`` and blended features,
+        ready for :meth:`fpl_value_model.model.ValueModel.predict`. Carries
+        a ``has_history`` flag: ``False`` means the prediction rests on a
+        position average rather than the player's own record, and should
+        be trusted less.
     """
     hist_features = latest_history_per_player(
         build_feature_frame(history, require_target=False)
     )
-    numeric_cols = list(NUMERIC_FEATURES)
+    numeric_cols = list(BLEND_FEATURES)
+    position_avg = hist_features.groupby("position")[numeric_cols].mean()
 
     id_cols = [
         c
@@ -177,6 +188,7 @@ def attach_history_features(
             "total_points",
             "status",
             "chance_of_playing_next_round",
+            *TEAM_FEATURES,
         )
         if c in live.columns
     ]
@@ -185,9 +197,13 @@ def attach_history_features(
     merged = live_priced.merge(
         hist_features[["name", *numeric_cols]],
         on="name",
-        how="inner",
+        how="left",
         suffixes=("_now", "_hist"),
     )
+    had_history = merged["minutes_hist"].notna()
+    for col in numeric_cols:
+        fallback = merged["position"].map(position_avg[col])
+        merged[f"{col}_hist"] = merged[f"{col}_hist"].fillna(fallback)
 
     weight = merged["minutes_now"] / (merged["minutes_now"] + shrinkage)
     for col in numeric_cols:
@@ -200,5 +216,6 @@ def attach_history_features(
         merged["available"] = merged["status"].isin(AVAILABLE_STATUSES)
     else:
         merged["available"] = True
+    merged["has_history"] = had_history.to_numpy()
 
     return merged.reset_index(drop=True)

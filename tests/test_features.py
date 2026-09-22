@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from fpl_value_model.config import FEATURE_COLUMNS, PER90_FEATURES
 from fpl_value_model.features import (
@@ -69,26 +70,57 @@ def test_latest_history_per_player_keeps_most_recent(
     assert not (out["season"] == "2022-23").any()
 
 
-def test_attach_history_features_inner_joins_on_name(
+def test_attach_history_features_keeps_every_live_player(
     raw_history: pd.DataFrame, raw_live: pd.DataFrame
 ) -> None:
     out = attach_history_features(raw_live, raw_history)
-    assert len(out) > 0
-    assert len(out) <= len(raw_live)
+    assert len(out) == len(raw_live)
     assert set(FEATURE_COLUMNS).issubset(out.columns)
     # price_m comes from the live pool, not history.
     merged = out.merge(add_price_m(raw_live)[["name", "price_m"]], on="name")
     assert np.allclose(merged["price_m_x"], merged["price_m_y"])
 
 
-def test_attach_history_features_drops_players_without_history(
+def test_attach_history_features_falls_back_to_position_average(
     raw_history: pd.DataFrame, raw_live: pd.DataFrame
 ) -> None:
     newcomer = raw_live.iloc[[0]].copy()
     newcomer["name"] = "Brand New Signing"
+    newcomer["position"] = "FWD"
+    newcomer["minutes"] = 0
     live = pd.concat([raw_live, newcomer], ignore_index=True)
     out = attach_history_features(live, raw_history)
-    assert "Brand New Signing" not in set(out["name"])
+
+    row = out.loc[out["name"] == "Brand New Signing"]
+    assert len(row) == 1
+    assert not row["has_history"].iloc[0]
+
+    fwd_hist = latest_history_per_player(
+        build_feature_frame(raw_history, require_target=False)
+    )
+    fwd_hist = fwd_hist.loc[fwd_hist["position"] == "FWD"]
+    assert row["goals_scored_per90"].iloc[0] == pytest.approx(
+        fwd_hist["goals_scored_per90"].mean()
+    )
+
+    # Players with their own history are unaffected.
+    assert out.loc[out["name"] != "Brand New Signing", "has_history"].all()
+
+
+def test_attach_history_features_uses_current_team_strength_not_blended(
+    raw_history: pd.DataFrame, raw_live: pd.DataFrame
+) -> None:
+    # Transfer one player to a new, much stronger club this season. Their
+    # historical row still has the old club's (weaker) team_strength.
+    live = raw_live.copy()
+    transferred_name = live.loc[0, "name"]
+    live.loc[0, "team_id"] = 99
+    live.loc[0, "team_strength"] = 2.5
+    live.loc[0, "minutes"] = 0  # no minutes yet at the new club
+
+    out = attach_history_features(live, raw_history)
+    row = out.loc[out["name"] == transferred_name]
+    assert row["team_strength"].iloc[0] == pytest.approx(2.5)
 
 
 def test_attach_history_features_defaults_available_without_status(

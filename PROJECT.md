@@ -35,12 +35,16 @@ tenths of a million (e.g. `75` = GBP 7.5m).
 
 Per-90 rates of: goals, assists, expected goals, expected assists,
 expected goal involvements, ICT index, bonus, clean sheets, saves.
-Plus season minutes (a role/availability proxy) and position
-(GK / DEF / MID / FWD, one-hot encoded).
+Plus season minutes (a role/availability proxy), team strength
+(z-scored within each season so it's comparable across FPL's scale
+drift -- see Known caveat), and position (GK / DEF / MID / FWD,
+one-hot encoded).
 
 Player-seasons under 450 minutes are dropped -- their per-90 rates are
-too noisy to price against. Live players are scored on their most recent
-completed season's per-90 form.
+too noisy to price against. Live players are scored on a blend of
+this season's form and their most recent completed season's, weighted
+by minutes played so far this season; team strength always reflects
+their current club, never blended across a transfer.
 
 ## Model output
 
@@ -62,7 +66,8 @@ Ridge, Lasso, and a gradient-boosted tree baseline.
   (free, no key, updates daily)
 - **Historical:** `vaastav/Fantasy-Premier-League` GitHub repo,
   `data/<season>/players_raw.csv` (seasons 2022-23 onward, where
-  expected-goals columns exist)
+  expected-goals columns exist) and `data/<season>/teams.csv` for
+  team strength
 
 ## Success criteria
 
@@ -87,3 +92,17 @@ managers buy a player), not only on-pitch performance. The residual
 therefore captures both genuine mispricing and price-change lag. This
 is acceptable -- surfacing both is the point -- but it is documented so
 results are read correctly.
+
+Live players with no personal Premier League history (new signings,
+promoted-team players, academy graduates) are priced on their position's
+average rather than dropped, flagged `has_history = False`. This keeps
+them in the pool but means the model has no real signal on them beyond
+position and price -- several minimum-priced players can tie on
+predicted value. Treat these as speculative, not a ranked recommendation.
+
+FPL's team-strength scale has drifted over time and differs between the
+live API (~1-5) and the historical mirror (~1200-1400), so raw values
+aren't comparable across seasons or sources. Team strength is z-scored
+within each season (and within the live pool) before use, so the
+feature means "how strong relative to its 19 rivals that season"
+everywhere, immune to further scale changes on FPL's end.

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
+import pytest
 
-from fpl_value_model.data import _KEEP_COLUMNS, _normalise
+from fpl_value_model.data import _KEEP_COLUMNS, _normalise, _team_strength_table
 
 
 def _raw_row() -> dict[str, object]:
@@ -58,3 +60,46 @@ def test_normalise_fills_missing_columns_with_na() -> None:
 def test_normalise_builds_name_when_absent() -> None:
     out = _normalise(pd.DataFrame([_raw_row()]), season="2024-25")
     assert out.loc[0, "name"] == "Bukayo Saka"
+
+
+def _raw_teams(overall_home: list[int], overall_away: list[int]) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "id": range(1, len(overall_home) + 1),
+            "strength_overall_home": overall_home,
+            "strength_overall_away": overall_away,
+        }
+    )
+
+
+def test_team_strength_table_is_zero_mean_unit_std() -> None:
+    teams = _raw_teams([1200, 1300, 1400, 1100], [1250, 1350, 1450, 1150])
+    out = _team_strength_table(teams)
+    assert out["team_strength"].mean() == pytest.approx(0.0, abs=1e-9)
+    assert out["team_strength"].std() == pytest.approx(1.0)
+
+
+def test_team_strength_table_ranks_stronger_teams_higher() -> None:
+    teams = _raw_teams([1200, 1400], [1200, 1400])
+    out = _team_strength_table(teams).set_index("team_id")
+    assert out.loc[2, "team_strength"] > out.loc[1, "team_strength"]
+
+
+def test_team_strength_table_comparable_across_different_absolute_scales() -> None:
+    # The live API's compressed 1-5 scale and the historical mirror's
+    # ~1200-1400 scale should land in the same normalised range for a
+    # team in the same relative position (here, strongest of four).
+    historical = _raw_teams([1100, 1200, 1300, 1400], [1100, 1200, 1300, 1400])
+    live = _raw_teams([2, 3, 4, 5], [2, 3, 4, 5])
+    hist_top = _team_strength_table(historical)["team_strength"].iloc[-1]
+    live_top = _team_strength_table(live)["team_strength"].iloc[-1]
+    assert hist_top == pytest.approx(live_top)
+
+
+def test_team_strength_table_handles_zero_variance() -> None:
+    # All teams rated identically (e.g. the live API's zeroed sub-fields)
+    # must not produce inf/NaN from a zero standard deviation.
+    teams = _raw_teams([0, 0, 0], [0, 0, 0])
+    out = _team_strength_table(teams)
+    assert np.isfinite(out["team_strength"]).all()
+    assert (out["team_strength"] == 0.0).all()

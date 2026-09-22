@@ -23,6 +23,7 @@ from fpl_value_model.config import (
     POSITION_MAP,
     RAW_DIR,
     VAASTAV_PLAYERS_RAW_URL,
+    VAASTAV_TEAMS_RAW_URL,
     ensure_data_dirs,
 )
 
@@ -130,6 +131,49 @@ def _normalise(frame: pd.DataFrame, *, season: str) -> pd.DataFrame:
     return out
 
 
+def _team_strength_table(teams: pd.DataFrame) -> pd.DataFrame:
+    """Reduce a raw FPL teams table to a within-source z-scored rating.
+
+    FPL's absolute strength scale has drifted over time and even differs
+    between the live API and the historical mirror (a ~1-5 scale live vs.
+    a ~1200-1400 scale historically), so a raw value isn't comparable
+    across seasons. Z-scoring within the season (or the live pool) turns
+    it into "how strong is this team relative to its 19 rivals that
+    season", which is comparable everywhere and is what actually matters
+    for pricing a player.
+
+    Parameters
+    ----------
+    teams
+        A raw ``teams`` table (FPL's ``bootstrap-static`` teams array, or
+        a season's vaastav ``teams.csv``), with ``id``,
+        ``strength_overall_home``, and ``strength_overall_away`` columns.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per team: ``team_id`` and ``team_strength``.
+    """
+    home = pd.to_numeric(teams["strength_overall_home"], errors="coerce")
+    away = pd.to_numeric(teams["strength_overall_away"], errors="coerce")
+    overall = (home + away) / 2.0
+    std = overall.std()
+    z = (overall - overall.mean()) / std if std and not pd.isna(std) else overall * 0.0
+    return pd.DataFrame(
+        {
+            "team_id": pd.to_numeric(teams["id"], errors="coerce"),
+            "team_strength": z,
+        }
+    )
+
+
+def _fetch_teams_csv(season: str) -> pd.DataFrame:
+    """Download and parse a season's ``teams.csv`` from the vaastav mirror."""
+    response = _get(VAASTAV_TEAMS_RAW_URL.format(season=season))
+    response.encoding = "utf-8"
+    return pd.read_csv(io.StringIO(response.text))
+
+
 def load_live_players(*, refresh: bool = False) -> pd.DataFrame:
     """Return the current-season player table, cached to ``data/raw``.
 
@@ -148,8 +192,13 @@ def load_live_players(*, refresh: bool = False) -> pd.DataFrame:
     if cache.exists() and not refresh:
         return pd.read_parquet(cache)
 
-    elements = pd.DataFrame(fetch_bootstrap()["elements"])
+    payload = fetch_bootstrap()
+    elements = pd.DataFrame(payload["elements"])
     frame = _normalise(elements, season="live")
+
+    team_strength = _team_strength_table(pd.DataFrame(payload["teams"]))
+    frame = frame.merge(team_strength, on="team_id", how="left")
+
     frame.to_parquet(cache, index=False)
     return frame
 
@@ -186,7 +235,12 @@ def load_historical_players(
         response = _get(url)
         response.encoding = "utf-8"
         raw = pd.read_csv(io.StringIO(response.text))
-        frames.append(_normalise(raw, season=season))
+        frame = _normalise(raw, season=season)
+
+        team_strength = _team_strength_table(_fetch_teams_csv(season))
+        frame = frame.merge(team_strength, on="team_id", how="left")
+
+        frames.append(frame)
 
     combined = pd.concat(frames, ignore_index=True)
     combined.to_parquet(cache, index=False)
