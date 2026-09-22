@@ -37,14 +37,16 @@ Per-90 rates of: goals, assists, expected goals, expected assists,
 expected goal involvements, ICT index, bonus, clean sheets, saves.
 Plus season minutes (a role/availability proxy), team strength
 (z-scored within each season so it's comparable across FPL's scale
-drift -- see Known caveat), and position (GK / DEF / MID / FWD,
-one-hot encoded).
+drift -- see Known caveat), ownership (`selected_by_percent`, the
+market's own current view of a player -- see Known caveat), and
+position (GK / DEF / MID / FWD, one-hot encoded).
 
 Player-seasons under 450 minutes are dropped -- their per-90 rates are
 too noisy to price against. Live players are scored on a blend of
 this season's form and their most recent completed season's, weighted
-by minutes played so far this season; team strength always reflects
-their current club, never blended across a transfer.
+by minutes played so far this season; team strength and ownership
+always reflect the player's current state, never blended across a
+transfer or the off-season.
 
 ## Model output
 
@@ -106,3 +108,13 @@ aren't comparable across seasons or sources. Team strength is z-scored
 within each season (and within the live pool) before use, so the
 feature means "how strong relative to its 19 rivals that season"
 everywhere, immune to further scale changes on FPL's end.
+
+Ownership is partly circular as a price feature: a player's price rises
+*because* enough managers transfer them in, so ownership and price move
+together somewhat by construction, beyond any genuine performance signal.
+Adding it measurably shrank (but did not eliminate) the residual on
+premium players like Haaland and Bruno Fernandes -- consistent with it
+recovering real signal about the captaincy/ownership premium rather than
+just letting the model parrot price back to itself, but it's worth
+re-checking this doesn't drift toward pure circularity as the model
+evolves.

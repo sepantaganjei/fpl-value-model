@@ -123,6 +123,21 @@ def test_attach_history_features_uses_current_team_strength_not_blended(
     assert row["team_strength"].iloc[0] == pytest.approx(2.5)
 
 
+def test_attach_history_features_uses_current_ownership_not_blended(
+    raw_history: pd.DataFrame, raw_live: pd.DataFrame
+) -> None:
+    # A player who blew up in popularity this season (but has 0 minutes
+    # so far) should show this season's ownership, not last season's.
+    live = raw_live.copy()
+    name = live.loc[0, "name"]
+    live.loc[0, "selected_by_percent"] = 45.0
+    live.loc[0, "minutes"] = 0
+
+    out = attach_history_features(live, raw_history)
+    row = out.loc[out["name"] == name]
+    assert row["selected_by_percent"].iloc[0] == pytest.approx(45.0)
+
+
 def test_attach_history_features_defaults_available_without_status(
     raw_history: pd.DataFrame, raw_live: pd.DataFrame
 ) -> None:

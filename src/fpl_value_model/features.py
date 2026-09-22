@@ -15,11 +15,11 @@ from fpl_value_model.config import (
     AVAILABLE_STATUSES,
     BLEND_FEATURES,
     COUNTING_STATS,
+    CURRENT_FEATURES,
     FEATURE_COLUMNS,
     MIN_MINUTES,
     TARGET_COLUMN,
     TARGET_M,
-    TEAM_FEATURES,
 )
 
 
@@ -146,11 +146,13 @@ def attach_history_features(
     a live player with no historical match (new signings, promoted-team
     players, academy graduates) it falls back to the average of their
     position instead of being dropped, since even a rough position-shaped
-    prior beats no prediction at all. Team-level features (see
-    :data:`~fpl_value_model.config.TEAM_FEATURES`) are the exception: they
-    come straight from the player's current club, unblended, since a
-    summer transfer should see their new team's strength immediately
-    rather than a mix with their old one's.
+    prior beats no prediction at all. Current-state features (see
+    :data:`~fpl_value_model.config.CURRENT_FEATURES`) are the exception:
+    they come straight from the player's current club and current
+    ownership, unblended, since a summer transfer should see their new
+    team's strength immediately rather than a mix with their old one's,
+    and this week's ownership is what the market thinks right now, not a
+    form stat to smooth from a small in-season sample.
 
     Parameters
     ----------
@@ -188,7 +190,7 @@ def attach_history_features(
             "total_points",
             "status",
             "chance_of_playing_next_round",
-            *TEAM_FEATURES,
+            *CURRENT_FEATURES,
         )
         if c in live.columns
     ]

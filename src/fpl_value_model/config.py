@@ -53,13 +53,14 @@ PER90_FEATURES: tuple[str, ...] = tuple(f"{stat}_per90" for stat in COUNTING_STA
 #: a live player, weighted by minutes played so far this season.
 BLEND_FEATURES: tuple[str, ...] = (*PER90_FEATURES, "minutes")
 
-#: Team-level context, taken as-is from the player's *current* club. Never
-#: blended across seasons: a summer transfer should see their new club's
-#: strength immediately, not a mix with their old one's.
-TEAM_FEATURES: tuple[str, ...] = ("team_strength",)
+#: Taken as-is from the player's *current* state, never blended across a
+#: transfer or the off-season: these are snapshots of "right now" (which
+#: club, how the market currently views them), not a form stat to smooth
+#: from a small in-season sample.
+CURRENT_FEATURES: tuple[str, ...] = ("team_strength", "selected_by_percent")
 
 #: All numeric model features.
-NUMERIC_FEATURES: tuple[str, ...] = (*BLEND_FEATURES, *TEAM_FEATURES)
+NUMERIC_FEATURES: tuple[str, ...] = (*BLEND_FEATURES, *CURRENT_FEATURES)
 
 #: Categorical model features, one-hot encoded before fitting.
 CATEGORICAL_FEATURES: tuple[str, ...] = ("position",)
