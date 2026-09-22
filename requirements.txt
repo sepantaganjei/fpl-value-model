@@ -1,0 +1,13 @@
+# Runtime dependencies for app/streamlit_app.py only.
+#
+# Kept separate and minimal from pyproject.toml's full dependency list:
+# Streamlit Community Cloud's builder looks for requirements.txt first, and
+# the dashboard only reads data/predictions.parquet -- it never imports
+# fpl_value_model, fits a model, or calls the FPL API, so it doesn't need
+# scikit-learn, joblib, matplotlib, or requests. Keeping this file scoped to
+# what the app actually imports keeps the Cloud build fast and avoids any
+# risk of Streamlit Cloud's installer not resolving pyproject.toml/poetry
+# metadata the way `poetry install` does locally.
+pandas>=3.0.3,<4.0.0
+pyarrow>=25.0.0,<26.0.0
+streamlit>=1.40.0,<2.0.0
