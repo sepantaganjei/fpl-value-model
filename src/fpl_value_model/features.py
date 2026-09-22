@@ -12,9 +12,11 @@ import numpy as np
 import pandas as pd
 
 from fpl_value_model.config import (
+    AVAILABLE_STATUSES,
     COUNTING_STATS,
     FEATURE_COLUMNS,
     MIN_MINUTES,
+    NUMERIC_FEATURES,
     TARGET_COLUMN,
     TARGET_M,
 )
@@ -126,11 +128,22 @@ def latest_history_per_player(history: pd.DataFrame) -> pd.DataFrame:
     return ordered.drop_duplicates("name", keep="last").reset_index(drop=True)
 
 
-def attach_history_features(live: pd.DataFrame, history: pd.DataFrame) -> pd.DataFrame:
-    """Give each live player the per-90 features from their latest season.
+def attach_history_features(
+    live: pd.DataFrame,
+    history: pd.DataFrame,
+    *,
+    shrinkage: int = MIN_MINUTES,
+) -> pd.DataFrame:
+    """Blend each live player's in-progress season with their latest one.
 
-    Live players with no historical match (new signings, academy players)
-    are dropped: the model has nothing to price them on.
+    This season's per-90 rates and minutes are shrunk toward the player's
+    most recent completed season, weighted by how many minutes they've
+    played so far this season: early on, with only a handful of minutes,
+    the blend leans on last season's rates since a tiny in-season sample
+    is too noisy to trust; as minutes accumulate this season it shifts
+    toward the player's current form. Live players with no historical
+    match (new signings, academy players) are dropped: there is nothing
+    to blend with.
 
     Parameters
     ----------
@@ -138,31 +151,54 @@ def attach_history_features(live: pd.DataFrame, history: pd.DataFrame) -> pd.Dat
         Current-season players on the shared schema.
     history
         Raw historical player-season rows (pre-feature-build).
+    shrinkage
+        Minutes played this season at which the blend is 50/50 between
+        this season and last. Defaults to :data:`MIN_MINUTES`, the same
+        threshold used elsewhere to call a per-90 rate stable.
 
     Returns
     -------
     pandas.DataFrame
-        Live players with current ``price_m`` and historical features,
-        ready for :meth:`fpl_value_model.model.ValueModel.predict`.
+        Live players with current ``price_m`` and blended features, ready
+        for :meth:`fpl_value_model.model.ValueModel.predict`.
     """
     hist_features = latest_history_per_player(
         build_feature_frame(history, require_target=False)
     )
-    feature_cols = list(FEATURE_COLUMNS)
+    numeric_cols = list(NUMERIC_FEATURES)
 
     id_cols = [
         c
-        for c in ("player_id", "name", "position", "team_id", "total_points")
+        for c in (
+            "player_id",
+            "name",
+            "position",
+            "team_id",
+            "total_points",
+            "status",
+            "chance_of_playing_next_round",
+        )
         if c in live.columns
     ]
-    live_priced = add_price_m(live)[[*id_cols, TARGET_M]]
+    live_current = to_per90(live)
+    live_priced = add_price_m(live_current)[[*id_cols, TARGET_M, *numeric_cols]]
     merged = live_priced.merge(
-        hist_features[["name", *feature_cols]],
+        hist_features[["name", *numeric_cols]],
         on="name",
         how="inner",
-        suffixes=("", "_hist"),
+        suffixes=("_now", "_hist"),
     )
-    # Prefer the live position label over the historical one.
-    if "position_hist" in merged.columns:
-        merged = merged.drop(columns="position_hist")
+
+    weight = merged["minutes_now"] / (merged["minutes_now"] + shrinkage)
+    for col in numeric_cols:
+        merged[col] = (
+            weight * merged[f"{col}_now"] + (1 - weight) * merged[f"{col}_hist"]
+        )
+        merged = merged.drop(columns=[f"{col}_now", f"{col}_hist"])
+
+    if "status" in merged.columns:
+        merged["available"] = merged["status"].isin(AVAILABLE_STATUSES)
+    else:
+        merged["available"] = True
+
     return merged.reset_index(drop=True)

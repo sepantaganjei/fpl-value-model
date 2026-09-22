@@ -89,3 +89,24 @@ def test_attach_history_features_drops_players_without_history(
     live = pd.concat([raw_live, newcomer], ignore_index=True)
     out = attach_history_features(live, raw_history)
     assert "Brand New Signing" not in set(out["name"])
+
+
+def test_attach_history_features_defaults_available_without_status(
+    raw_history: pd.DataFrame, raw_live: pd.DataFrame
+) -> None:
+    # The fixtures carry no ``status`` column, matching a source that
+    # doesn't report it: nothing should be assumed unavailable.
+    out = attach_history_features(raw_live, raw_history)
+    assert out["available"].all()
+
+
+def test_attach_history_features_flags_unavailable_status(
+    raw_history: pd.DataFrame, raw_live: pd.DataFrame
+) -> None:
+    live = raw_live.copy()
+    live["status"] = "a"
+    live.loc[0, "status"] = "i"
+    out = attach_history_features(live, raw_history)
+    flagged = out.loc[out["name"] == live.loc[0, "name"], "available"]
+    assert not flagged.iloc[0]
+    assert out["available"].sum() == len(out) - 1

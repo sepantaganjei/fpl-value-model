@@ -49,6 +49,8 @@ _KEEP_COLUMNS: tuple[str, ...] = (
     "saves",
     "selected_by_percent",
     "form",
+    "status",
+    "chance_of_playing_next_round",
 )
 
 
@@ -123,7 +125,7 @@ def _normalise(frame: pd.DataFrame, *, season: str) -> pd.DataFrame:
     out = out[list(_KEEP_COLUMNS)].copy()
     out["season"] = season
 
-    numeric = [c for c in _KEEP_COLUMNS if c not in {"name", "position"}]
+    numeric = [c for c in _KEEP_COLUMNS if c not in {"name", "position", "status"}]
     out[numeric] = out[numeric].apply(pd.to_numeric, errors="coerce")
     return out
 

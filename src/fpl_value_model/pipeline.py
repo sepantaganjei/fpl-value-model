@@ -32,6 +32,9 @@ _OUTPUT_COLUMNS: tuple[str, ...] = (
     "value_m",
     "total_points",
     "points_per_m",
+    "available",
+    "status",
+    "chance_of_playing_next_round",
 )
 
 

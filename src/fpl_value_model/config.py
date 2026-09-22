@@ -61,6 +61,9 @@ TARGET_M: str = "price_m"
 #: Minimum season minutes for a player-season to carry a stable per-90 signal.
 MIN_MINUTES: int = 450
 
+#: FPL ``status`` codes meaning the player can actually be picked right now.
+AVAILABLE_STATUSES: frozenset[str] = frozenset({"a"})
+
 
 def ensure_data_dirs() -> None:
     """Create the ``data/`` subdirectories if they do not yet exist."""
